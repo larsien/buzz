@@ -20,6 +20,9 @@ services:
       BUZZ_GIT_REPO_PATH: /data/git
       BUZZ_AUTO_MIGRATE: ${BUZZ_AUTO_MIGRATE:-false}
       BUZZ_GIT_CONFORMANCE_PROBE: ${BUZZ_GIT_CONFORMANCE_PROBE:-true}
+      # Mobile pairing talks to the pair relay, not to /pair on this service —
+      # that path does not exist here, which is why the phone saw a 404.
+      BUZZ_PAIRING_RELAY_URL: ${BUZZ_PAIRING_RELAY_URL:?set BUZZ_PAIRING_RELAY_URL}
     ports:
       - "${BUZZ_HTTP_PORT:-3000}:3000"
     volumes:
@@ -44,6 +47,21 @@ services:
       timeout: 3s
       retries: 12
       start_period: 30s
+    restart: unless-stopped
+    networks:
+      - buzz-net
+
+  # Mobile pairing relay. Separate binary in the same image; the main relay does
+  # not serve a pairing endpoint of its own.
+  pair:
+    image: ${BUZZ_IMAGE:-ghcr.io/block/buzz:main}
+    entrypoint: ["/usr/local/bin/buzz-pair-relay"]
+    environment:
+      BUZZ_PAIR_RELAY_BIND_ADDR: 0.0.0.0:5000
+    ports:
+      # Loopback only: Tailscale Serve terminates TLS and proxies to it, so the
+      # port is never exposed to the LAN.
+      - "127.0.0.1:${BUZZ_PAIR_PORT:-5000}:5000"
     restart: unless-stopped
     networks:
       - buzz-net
