@@ -11,6 +11,10 @@ import { AgentDialog } from "./AgentDialog";
 import { CommunityCatalogDialog } from "./CommunityCatalogDialog";
 import { PersonaDeleteDialog } from "./PersonaDeleteDialog";
 import { PersonaShareDialog } from "./PersonaShareDialog";
+import {
+  StartPersonaRunOnDialog,
+  useStartPersonaRunOn,
+} from "./StartPersonaRunOnDialog";
 import { AgentSnapshotExportDialog } from "./AgentSnapshotExportDialog";
 import { AgentSnapshotImportDialog } from "./AgentSnapshotImportDialog";
 import { TeamSnapshotExportDialog } from "./TeamSnapshotExportDialog";
@@ -43,6 +47,9 @@ export function AgentsView() {
   const { data: bakedEnv } = useBakedBuildEnvQuery({ enabled: true });
   const inheritedDefaults = getInheritedAgentDefaults(globalConfig, bakedEnv);
   const agents = useManagedAgentActions();
+  const startPersonaRunOn = useStartPersonaRunOn((persona, backendIntent) => {
+    void agents.handleStartPersona(persona, backendIntent);
+  });
   const personas = usePersonaActions();
   const teamImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const aiDefaultsTriggerRef = React.useRef<HTMLButtonElement>(null);
@@ -247,7 +254,7 @@ export function AgentsView() {
                 void agents.handleRestart(pubkey);
               }}
               onStartPersona={(persona) => {
-                void agents.handleStartPersona(persona);
+                void startPersonaRunOn.requestStart(persona);
               }}
               // Persona props
               personas={personas.libraryPersonas}
@@ -373,6 +380,7 @@ export function AgentsView() {
           title={personas.personaDialogState.title}
         />
       ) : null}
+      <StartPersonaRunOnDialog {...startPersonaRunOn.dialogProps} />
       {personas.personaToDelete ? (
         <PersonaDeleteDialog
           instanceCount={

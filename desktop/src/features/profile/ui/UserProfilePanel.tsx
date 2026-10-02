@@ -26,9 +26,14 @@ import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
 import { AddAgentToChannelDialog } from "@/features/agents/ui/AddAgentToChannelDialog";
 import {
   availableRuntimesForStart,
+  type BackendIntent,
   buildInstanceInputForDefinition,
   resolveStartRuntimeForDefinition,
 } from "@/features/agents/lib/instanceInputForDefinition";
+import {
+  StartPersonaRunOnDialog,
+  useStartPersonaRunOn,
+} from "@/features/agents/ui/StartPersonaRunOnDialog";
 import { describeLogFile } from "@/features/agents/ui/agentUi";
 import { useAgentLifecycleActions } from "@/features/profile/ui/useAgentLifecycleActions";
 import {
@@ -418,7 +423,7 @@ export function UserProfilePanel({
     });
 
   const createManagedAgentForPersona = React.useCallback(
-    async (personaToStart: AgentPersona) => {
+    async (personaToStart: AgentPersona, backendIntent?: BackendIntent) => {
       const runtimes = await availableRuntimesForStart(availableRuntimesQuery);
       const { runtime, warnings } = resolveStartRuntimeForDefinition(
         personaToStart,
@@ -433,6 +438,8 @@ export function UserProfilePanel({
       const input = await buildInstanceInputForDefinition(
         personaToStart,
         runtime,
+        undefined,
+        backendIntent,
       );
 
       const created = await createAgentMutation.mutateAsync(input);
@@ -459,25 +466,44 @@ export function UserProfilePanel({
       stopManagedAgent: stopAgentMutation.mutateAsync,
     });
 
-  const handleInstantiateAgent = React.useCallback(async () => {
+  const startPersonaInstance = React.useCallback(
+    async (
+      personaToStart: AgentPersona,
+      backendIntent: BackendIntent | null,
+    ) => {
+      try {
+        const created = await createManagedAgentForPersona(
+          personaToStart,
+          backendIntent ?? undefined,
+        );
+        if (created.spawnError) {
+          toast.error(created.spawnError);
+        } else {
+          toast.success(`Started ${created.agent.name}.`);
+        }
+        if (created.profileSyncError) {
+          toast.warning(created.profileSyncError);
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to start agent.",
+        );
+      }
+    },
+    [createManagedAgentForPersona],
+  );
+  // With a backend provider installed, Start asks where to run first; without
+  // one it starts locally immediately, exactly as before.
+  const startPersonaRunOn = useStartPersonaRunOn(
+    (personaToStart, backendIntent) => {
+      void startPersonaInstance(personaToStart, backendIntent);
+    },
+    { enabled: canInstantiateAgent },
+  );
+  const handleInstantiateAgent = React.useCallback(() => {
     if (!resolvedPersona) return;
-
-    try {
-      const created = await createManagedAgentForPersona(resolvedPersona);
-      if (created.spawnError) {
-        toast.error(created.spawnError);
-      } else {
-        toast.success(`Started ${created.agent.name}.`);
-      }
-      if (created.profileSyncError) {
-        toast.warning(created.profileSyncError);
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to start agent.",
-      );
-    }
-  }, [createManagedAgentForPersona, resolvedPersona]);
+    void startPersonaRunOn.requestStart(resolvedPersona);
+  }, [resolvedPersona, startPersonaRunOn.requestStart]);
 
   const handleToggleAgentAutoStart = React.useCallback(async () => {
     if (managedAgent?.backend.type !== "local") return;
@@ -970,6 +996,7 @@ export function UserProfilePanel({
         onExportSnapshot={setPersonaToExportSnapshot}
         onSubmit={handleSubmitPersona}
       />
+      <StartPersonaRunOnDialog {...startPersonaRunOn.dialogProps} />
     </>
   );
   return (

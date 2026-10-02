@@ -34,6 +34,7 @@ import {
 import { clearActiveTurnsForAgentOnStop } from "../managedAgentRuntimeHooks";
 import {
   availableRuntimesForStart,
+  type BackendIntent,
   buildInstanceInputForDefinition,
   resolveStartRuntimeForDefinition,
 } from "../lib/instanceInputForDefinition";
@@ -224,7 +225,10 @@ export function useManagedAgentActions() {
     setStartingPersonaIds(next);
   }
 
-  async function handleStartPersona(persona: AgentPersona) {
+  async function handleStartPersona(
+    persona: AgentPersona,
+    backendIntent?: BackendIntent | null,
+  ) {
     if (startingPersonaIdsRef.current.has(persona.id)) {
       return;
     }
@@ -237,7 +241,12 @@ export function useManagedAgentActions() {
         runtimes,
         globalConfig.preferred_runtime,
       );
-      const input = await buildInstanceInputForDefinition(persona, runtime);
+      const input = await buildInstanceInputForDefinition(
+        persona,
+        runtime,
+        undefined,
+        backendIntent ?? undefined,
+      );
 
       const created = await createAgentMutation.mutateAsync(input);
       toast.success("Agent created");
