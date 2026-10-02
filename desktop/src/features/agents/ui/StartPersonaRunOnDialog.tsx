@@ -107,7 +107,10 @@ export function useStartPersonaRunOn(
         if (choosingIdRef.current !== selected.id) return;
         choosingIdRef.current = null;
         setPersona(null);
-        void runStart(selected, intent);
+        // runStart releases the guard in `finally` and the caller's
+        // startPersona surfaces its own errors; nothing awaits this promise,
+        // so swallow the rethrow instead of leaving an unhandled rejection.
+        void runStart(selected, intent).catch(() => {});
       },
       onDraftChange: setDraft,
     },

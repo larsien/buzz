@@ -690,3 +690,48 @@ test("provider discovered: double Start opens one dialog, double confirm starts 
   );
   assert.equal(calls.length, 1, "Cancel starts nothing");
 });
+
+test("provider discovered: a confirm-path start that rejects leaves no unhandled rejection and releases the guard", async () => {
+  installIpc({ providers: [PROVIDER] });
+  const failure = new Error("confirm-path start failed");
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    let attempts = 0;
+    const { result } = renderStartGate(async () => {
+      attempts += 1;
+      throw failure;
+    });
+
+    await act(async () => {
+      await result.current.requestStart(SCOUT);
+    });
+    assert.equal(result.current.dialogProps.persona?.id, PERSONA_ID);
+
+    await act(async () => {
+      result.current.dialogProps.onConfirm(SCOUT, null);
+    });
+    // Unhandled rejections are reported after the microtask queue drains.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    assert.equal(attempts, 1, "confirm starts once");
+    assert.equal(
+      unhandled.filter((reason) => reason === failure).length,
+      0,
+      "a rejected confirm-path start must not surface as an unhandled rejection",
+    );
+
+    await act(async () => {
+      await result.current.requestStart(SCOUT);
+    });
+    assert.equal(
+      result.current.dialogProps.persona?.id,
+      PERSONA_ID,
+      "the guard is released after the rejected start",
+    );
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
