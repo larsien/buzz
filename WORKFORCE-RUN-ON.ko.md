@@ -14,6 +14,7 @@
 - **provider가 없으면:** 대화상자 없이 즉시 로컬로 시작한다. 이전과 같은 동작이며 테스트로 고정했다.
   - 발견 쿼리가 아직 끝나지 않았으면 `refetch`로 결과를 확인한 뒤 결정한다. 그래서 너무 이른 클릭이 선택기를 건너뛰는 일은 없다.
   - 발견에 실패하면 "provider 없음"으로 처리한다.
+- **중복 Start 방지:** `useStartPersonaRunOn`은 같은 persona의 Start를 한 번에 하나만 처리한다. 발견 대기, 시작 진행, 대화상자가 열린 동안 다시 누른 Start는 무시하고, 시작이 끝나거나 실패하거나 Cancel하면 풀린다. 그래서 자체 guard가 없는 프로필 Start를 두 번 눌러도 인스턴스는 하나만 생긴다(`startPersonaRunOn.test.mjs`의 hook 테스트 4개로 고정).
 - Workforce 전용 코드, 문자열, id는 없다. upstream에 그대로 제안할 수 있는 형태로 유지했다.
 - Stop/Delete 동작과 provider 종료 안내 문구는 바꾸지 않았다.
 
@@ -63,7 +64,7 @@ pnpm build:e2e && npx playwright test --project=smoke \
 
 - **작음.** 신규 파일 1개와 기존 파일 3개를 조금 고쳤다. 기존 파일 변경은 합쳐서 약 +70/-20줄이다.
 - **충돌 가능 지점:**
-  - `UserProfilePanel.tsx`의 `createManagedAgentForPersona`와 `handleInstantiateAgent` 근처. 자주 바뀌는 큰 파일이며, 파일 크기 상한은 1200줄이고 현재 1025줄이다.
+  - `UserProfilePanel.tsx`의 `createManagedAgentForPersona`와 `handleInstantiateAgent` 근처. 자주 바뀌는 큰 파일이며, 파일 크기 상한은 1200줄이고 현재 1023줄이다.
   - `AgentsView.tsx`의 `onStartPersona` prop.
   - `handleStartPersona` 시그니처.
 - **API 의존:**

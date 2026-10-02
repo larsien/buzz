@@ -47,9 +47,9 @@ export function AgentsView() {
   const { data: bakedEnv } = useBakedBuildEnvQuery({ enabled: true });
   const inheritedDefaults = getInheritedAgentDefaults(globalConfig, bakedEnv);
   const agents = useManagedAgentActions();
-  const startPersonaRunOn = useStartPersonaRunOn((persona, backendIntent) => {
-    void agents.handleStartPersona(persona, backendIntent);
-  });
+  const startPersonaRunOn = useStartPersonaRunOn((persona, backendIntent) =>
+    agents.handleStartPersona(persona, backendIntent),
+  );
   const personas = usePersonaActions();
   const teamImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const aiDefaultsTriggerRef = React.useRef<HTMLButtonElement>(null);

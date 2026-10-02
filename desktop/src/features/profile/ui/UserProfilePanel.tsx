@@ -493,13 +493,11 @@ export function UserProfilePanel({
     [createManagedAgentForPersona],
   );
   // With a backend provider installed, Start asks where to run first; without
-  // one it starts locally immediately, exactly as before.
-  const startPersonaRunOn = useStartPersonaRunOn(
-    (personaToStart, backendIntent) => {
-      void startPersonaInstance(personaToStart, backendIntent);
-    },
-    { enabled: canInstantiateAgent },
-  );
+  // one it starts locally immediately, exactly as before. The gate also
+  // collapses a double Start while discovery or the start is pending.
+  const startPersonaRunOn = useStartPersonaRunOn(startPersonaInstance, {
+    enabled: canInstantiateAgent,
+  });
   const handleInstantiateAgent = React.useCallback(() => {
     if (!resolvedPersona) return;
     void startPersonaRunOn.requestStart(resolvedPersona);

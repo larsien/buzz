@@ -24,7 +24,7 @@ import {
 export type StartPersonaWithBackend = (
   persona: AgentPersona,
   backendIntent: BackendIntent | null,
-) => void;
+) => Promise<void>;
 
 /**
  * Gate for "Start" on an existing definition. With no `buzz-backend-*`
@@ -36,6 +36,12 @@ export type StartPersonaWithBackend = (
  * Discovery is refetch-aware like `availableRuntimesForStart`: an unsettled
  * query is fetched rather than read as "no providers", so an early click
  * cannot silently skip the selector. A failed discovery reads as none.
+ *
+ * One Start per persona at a time: a persona's slot is held from
+ * `requestStart` until its start settles (success or error) or its dialog is
+ * cancelled, so a double click while discovery or the start is pending
+ * collapses to one start. Callers without their own guard (the profile panel)
+ * rely on this.
  */
 export function useStartPersonaRunOn(
   startPersona: StartPersonaWithBackend,
@@ -47,15 +53,43 @@ export function useStartPersonaRunOn(
   const [persona, setPersona] = React.useState<AgentPersona | null>(null);
   const [draft, setDraft] =
     React.useState<WhereToRunDraft>(emptyWhereToRunDraft);
+  const inFlightRef = React.useRef(new Set<string>());
+  const choosingIdRef = React.useRef<string | null>(null);
+
+  async function runStart(next: AgentPersona, intent: BackendIntent | null) {
+    try {
+      await startPersona(next, intent);
+    } finally {
+      inFlightRef.current.delete(next.id);
+    }
+  }
+
+  function closeChooser() {
+    if (choosingIdRef.current !== null) {
+      inFlightRef.current.delete(choosingIdRef.current);
+      choosingIdRef.current = null;
+    }
+  }
 
   async function requestStart(next: AgentPersona) {
-    const providers = providersQuery.isFetched
-      ? providersQuery.data
-      : (await providersQuery.refetch()).data;
+    if (inFlightRef.current.has(next.id)) return;
+    inFlightRef.current.add(next.id);
+    let providers: typeof providersQuery.data;
+    try {
+      providers = providersQuery.isFetched
+        ? providersQuery.data
+        : (await providersQuery.refetch()).data;
+    } catch (error) {
+      inFlightRef.current.delete(next.id);
+      throw error;
+    }
     if (!providers || providers.length === 0) {
-      startPersona(next, null);
+      await runStart(next, null);
       return;
     }
+    // The open dialog keeps the slot until Start or Cancel.
+    closeChooser();
+    choosingIdRef.current = next.id;
     setDraft(emptyWhereToRunDraft);
     setPersona(next);
   }
@@ -65,10 +99,15 @@ export function useStartPersonaRunOn(
     dialogProps: {
       draft,
       persona,
-      onCancel: () => setPersona(null),
-      onConfirm: (selected: AgentPersona, intent: BackendIntent | null) => {
+      onCancel: () => {
+        closeChooser();
         setPersona(null);
-        startPersona(selected, intent);
+      },
+      onConfirm: (selected: AgentPersona, intent: BackendIntent | null) => {
+        if (choosingIdRef.current !== selected.id) return;
+        choosingIdRef.current = null;
+        setPersona(null);
+        void runStart(selected, intent);
       },
       onDraftChange: setDraft,
     },

@@ -41,6 +41,7 @@ let act;
 let cleanup;
 let fireEvent;
 let render;
+let renderHook;
 let waitFor;
 let createElement;
 let QueryClient;
@@ -49,6 +50,7 @@ let CommunitiesProvider;
 let ThemeProvider;
 let TooltipProvider;
 let AgentsView;
+let useStartPersonaRunOn;
 
 const PERSONA_ID = "persona-scout";
 const AGENT_PK = "e".repeat(64);
@@ -350,7 +352,7 @@ before(async () => {
     transformCallback: () => Math.random(),
   };
 
-  ({ act, cleanup, fireEvent, render, waitFor } = await import(
+  ({ act, cleanup, fireEvent, render, renderHook, waitFor } = await import(
     "@testing-library/react"
   ));
   ({ createElement } = await import("react"));
@@ -363,6 +365,7 @@ before(async () => {
   ({ ThemeProvider } = await import("@/shared/theme/ThemeProvider"));
   ({ TooltipProvider } = await import("@/shared/ui/tooltip.tsx"));
   ({ AgentsView } = await import("./AgentsView.tsx"));
+  ({ useStartPersonaRunOn } = await import("./StartPersonaRunOnDialog.tsx"));
 });
 
 afterEach(() => {
@@ -519,4 +522,171 @@ test("provider discovered: Cancel creates nothing", async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
   assert.equal(createCalls().length, 0, "Cancel must not create an instance");
+});
+
+// ── In-flight guard (the gate hook itself) ───────────────────────────────────
+//
+// Profile Start (UserProfilePanel) has no guard of its own, and its button is
+// only disabled once the create mutation runs. requestStart awaits discovery
+// first, so a double click while discovery is unsettled used to reach
+// startPersona twice and create two local instances. These drive the real
+// hook with a gated `discover_backend_providers`.
+
+const SCOUT = { id: PERSONA_ID, displayName: "Scout" };
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function renderStartGate(startPersona) {
+  const client = new QueryClient({
+    defaultOptions: {
+      mutations: { gcTime: 0, retry: false },
+      queries: { gcTime: 0, retry: false },
+    },
+  });
+  clients.push(client);
+  const wrapper = ({ children }) =>
+    createElement(QueryClientProvider, { client }, children);
+  return renderHook(() => useStartPersonaRunOn(startPersona), { wrapper });
+}
+
+test("no provider: a double Start while discovery is pending starts once", async () => {
+  installIpc({ providers: [] });
+  const gate = deferred();
+  ipcHandlers.set("discover_backend_providers", () => gate.promise);
+  const calls = [];
+  const { result } = renderStartGate(async (persona, intent) => {
+    calls.push([persona.id, intent]);
+  });
+
+  let pending;
+  await act(async () => {
+    pending = [
+      result.current.requestStart(SCOUT),
+      result.current.requestStart(SCOUT),
+    ];
+  });
+  assert.equal(calls.length, 0, "nothing starts before discovery settles");
+
+  await act(async () => {
+    gate.resolve([]);
+    await Promise.all(pending);
+  });
+  assert.deepEqual(
+    calls,
+    [[PERSONA_ID, null]],
+    "concurrent Starts must collapse to a single local start",
+  );
+  assert.equal(result.current.dialogProps.persona, null, "no dialog");
+});
+
+test("a Start while the previous start is still running is ignored, then released", async () => {
+  installIpc({ providers: [] });
+  const starts = [];
+  const { result } = renderStartGate(() => {
+    const start = deferred();
+    starts.push(start);
+    return start.promise;
+  });
+
+  let first;
+  await act(async () => {
+    first = result.current.requestStart(SCOUT);
+  });
+  await waitFor(() => assert.equal(starts.length, 1));
+
+  await act(async () => {
+    await result.current.requestStart(SCOUT);
+  });
+  assert.equal(starts.length, 1, "second Start during the start is ignored");
+
+  await act(async () => {
+    starts[0].resolve();
+    await first;
+  });
+  let third;
+  await act(async () => {
+    third = result.current.requestStart(SCOUT);
+  });
+  await waitFor(() =>
+    assert.equal(starts.length, 2, "the guard is released on completion"),
+  );
+  await act(async () => {
+    starts[1].resolve();
+    await third;
+  });
+});
+
+test("a failed start releases the guard", async () => {
+  installIpc({ providers: [] });
+  let attempts = 0;
+  const { result } = renderStartGate(async () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("create failed");
+  });
+
+  await act(async () => {
+    await result.current.requestStart(SCOUT).catch(() => {});
+  });
+  await act(async () => {
+    await result.current.requestStart(SCOUT);
+  });
+  assert.equal(attempts, 2, "Start works again after a failed start");
+});
+
+test("provider discovered: double Start opens one dialog, double confirm starts once, Cancel releases", async () => {
+  installIpc({ providers: [PROVIDER] });
+  const gate = deferred();
+  ipcHandlers.set("discover_backend_providers", () => gate.promise);
+  const calls = [];
+  const { result } = renderStartGate(async (persona, intent) => {
+    calls.push([persona.id, intent]);
+  });
+
+  let pending;
+  await act(async () => {
+    pending = [
+      result.current.requestStart(SCOUT),
+      result.current.requestStart(SCOUT),
+    ];
+  });
+  await act(async () => {
+    gate.resolve([PROVIDER]);
+    await Promise.all(pending);
+  });
+  assert.equal(result.current.dialogProps.persona?.id, PERSONA_ID);
+  assert.equal(calls.length, 0, "opening the dialog starts nothing");
+
+  const { onConfirm } = result.current.dialogProps;
+  await act(async () => {
+    onConfirm(SCOUT, null);
+    onConfirm(SCOUT, null);
+  });
+  assert.deepEqual(calls, [[PERSONA_ID, null]], "double confirm starts once");
+  assert.equal(result.current.dialogProps.persona, null);
+
+  await act(async () => {
+    await result.current.requestStart(SCOUT);
+  });
+  assert.equal(result.current.dialogProps.persona?.id, PERSONA_ID);
+  await act(async () => {
+    result.current.dialogProps.onCancel();
+  });
+  assert.equal(result.current.dialogProps.persona, null);
+  await act(async () => {
+    await result.current.requestStart(SCOUT);
+  });
+  assert.equal(
+    result.current.dialogProps.persona?.id,
+    PERSONA_ID,
+    "Start reopens the dialog after Cancel",
+  );
+  assert.equal(calls.length, 1, "Cancel starts nothing");
 });
