@@ -73,6 +73,8 @@ mod updater;
 mod window_chrome;
 mod window_vibrancy;
 mod workflows;
+mod workforce;
+pub use workforce::*;
 mod workspace;
 
 pub use agent_access::*;

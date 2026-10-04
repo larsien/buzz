@@ -2524,6 +2524,15 @@ async fn tokio_main() -> Result<()> {
 
     let config = Config::from_cli().map_err(|e| anyhow::anyhow!("configuration error: {e}"))?;
 
+    // The supervisor supplies only signed owner stops it has already consumed.
+    // Exclude exact event IDs; timestamp filtering would discard fresh stops from
+    // a slow sender clock, and a mention replay floor may legitimately reach back.
+    let superseded_shutdowns = parse_superseded_shutdowns(
+        std::env::var("BUZZ_ACP_SUPERSEDED_SHUTDOWNS")
+            .ok()
+            .as_deref(),
+    )?;
+
     // ── Setup-mode early branch ───────────────────────────────────────────────
     //
     // When the desktop determines an agent is not ready (missing credentials,
@@ -3375,6 +3384,15 @@ async fn run_harness(
                                 let owner = owner_cache.get();
                                 if let Some(owner) = owner {
                                     if buzz_event.event.pubkey.to_hex() == *owner {
+                                        // Do not replay a stop already consumed by the supervisor.
+                                        // A different event still stops us, regardless of its timestamp.
+                                        if superseded_shutdowns.contains(&buzz_event.event.id) {
+                                            tracing::debug!(
+                                                event_id = %buzz_event.event.id,
+                                                "ignoring owner shutdown already consumed by supervisor"
+                                            );
+                                            continue;
+                                        }
                                         tracing::info!(
                                             channel_id = %buzz_event.channel_id,
                                             sender = %buzz_event.event.pubkey.to_hex(),
@@ -4172,6 +4190,20 @@ fn event_mentions_agent(event: &nostr::Event, agent_pubkey_hex: &str) -> bool {
         t.as_slice().first().map(|s| s.as_str()) == Some("p")
             && t.as_slice().get(1).map(|s| s.as_str()) == Some(agent_pubkey_hex)
     })
+}
+
+fn parse_superseded_shutdowns(raw: Option<&str>) -> Result<HashSet<nostr::EventId>> {
+    let Some(raw) = raw else {
+        return Ok(HashSet::new());
+    };
+    ensure!(raw.len() <= 3501, "superseded shutdown list is too large");
+    let ids: Vec<nostr::EventId> = serde_json::from_str(raw)
+        .map_err(|_| anyhow::anyhow!("superseded shutdown list must contain event IDs"))?;
+    ensure!(
+        ids.len() <= 50,
+        "superseded shutdown list has more than 50 IDs"
+    );
+    Ok(ids.into_iter().collect())
 }
 
 fn is_owner_control_command(
@@ -5979,6 +6011,22 @@ mod owner_control_command_tests {
             .tags(tags)
             .sign_with_keys(&keys)
             .unwrap()
+    }
+
+    #[test]
+    fn superseded_shutdowns_are_exact_bounded_ids() {
+        assert!(parse_superseded_shutdowns(None).unwrap().is_empty());
+        let id = "ab".repeat(32);
+        let parsed =
+            parse_superseded_shutdowns(Some(&serde_json::json!([id]).to_string())).unwrap();
+        assert!(parsed.contains(&nostr::EventId::from_hex(&id).unwrap()));
+        assert!(!parsed.contains(&nostr::EventId::from_hex(&"cd".repeat(32)).unwrap()));
+        for bad in ["not json", "[\"not an id\"]", "{}"] {
+            assert!(parse_superseded_shutdowns(Some(bad)).is_err());
+        }
+        assert!(
+            parse_superseded_shutdowns(Some(&serde_json::json!(vec![id; 51]).to_string())).is_err()
+        );
     }
 
     #[test]

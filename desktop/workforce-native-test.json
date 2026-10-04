@@ -1,0 +1,7 @@
+{
+  "productName": "Buzz Workforce Test",
+  "identifier": "xyz.block.buzz.app.demo.workforce-test-20261004",
+  "plugins": { "deep-link": { "desktop": { "schemes": ["buzz-demo-workforce-test-20261004"] } } },
+  "bundle": { "externalBin": [], "active": false },
+  "build": { "frontendDist": "../dist", "beforeBuildCommand": "", "beforeDevCommand": "" }
+}

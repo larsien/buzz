@@ -521,6 +521,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::open_workforce_console,
             terminal_runtime::terminal_attach,
             terminal_runtime::terminal_detach,
             terminal_runtime::terminal_close,
