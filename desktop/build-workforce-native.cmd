@@ -9,4 +9,3 @@ set "BUZZ_RELAY_HTTP=http://127.0.0.1:3190"
 set "BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY=1"
 cd /d C:\Users\larsi\orca\workspaces\buzz\workforce-run-on\desktop
 node node_modules\@tauri-apps\cli\tauri.js build --debug --no-bundle --config workforce-native-test.json -- --offline --locked
-
