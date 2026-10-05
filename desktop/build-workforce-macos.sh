@@ -24,10 +24,12 @@ done
 # Same upstream version's signed sidecars are retained. The patched ACP that
 # handles remote Workforce employees is already installed on the Windows host.
 cd desktop
-pnpm install --frozen-lockfile
-pnpm typecheck > workforce-macos-typecheck.log 2>&1
-pnpm test > workforce-macos-frontend-tests.log 2>&1
-pnpm build > workforce-macos-frontend-build.log 2>&1
+if [[ "${1:-}" != --native-only ]]; then
+  pnpm install --frozen-lockfile
+  pnpm typecheck > workforce-macos-typecheck.log 2>&1
+  pnpm test > workforce-macos-frontend-tests.log 2>&1
+  pnpm build > workforce-macos-frontend-build.log 2>&1
+fi
 pnpm exec tauri build --debug --bundles app --config workforce-macos.json -- --locked > workforce-macos-native-build.log 2>&1
 cargo test --manifest-path src-tauri/Cargo.toml --locked --lib commands::workforce::tests > workforce-macos-native-test.log 2>&1
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --lib > workforce-macos-clippy.log 2>&1

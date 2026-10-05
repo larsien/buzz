@@ -1,5 +1,5 @@
 {
-  "productName": "Buzz",
+  "productName": "Buzz Workforce",
   "identifier": "xyz.block.buzz.app",
   "bundle": { "active": true, "targets": ["app"] },
   "build": { "frontendDist": "../dist", "beforeBuildCommand": "", "beforeDevCommand": "" }
