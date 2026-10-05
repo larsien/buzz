@@ -1,0 +1,6 @@
+{
+  "productName": "Buzz",
+  "identifier": "xyz.block.buzz.app",
+  "bundle": { "active": true, "targets": ["app"] },
+  "build": { "frontendDist": "../dist", "beforeBuildCommand": "", "beforeDevCommand": "" }
+}
