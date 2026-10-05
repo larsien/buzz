@@ -31,5 +31,6 @@ if [[ "${1:-}" != --native-only ]]; then
   pnpm build > workforce-macos-frontend-build.log 2>&1
 fi
 pnpm exec tauri build --debug --bundles app --config workforce-macos.json -- --locked > workforce-macos-native-build.log 2>&1
+bash sign-workforce-macos.sh > workforce-macos-sign.log 2>&1
 cargo test --manifest-path src-tauri/Cargo.toml --locked --lib commands::workforce::tests > workforce-macos-native-test.log 2>&1
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --lib > workforce-macos-clippy.log 2>&1
