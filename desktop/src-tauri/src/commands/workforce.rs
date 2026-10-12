@@ -21,14 +21,16 @@ pub async fn open_workforce_console(
     if window.label() != "main" {
         return Err("Open Workforce from the main Buzz window.".into());
     }
+    let url = format!("{CONSOLE_ORIGIN}/schedules")
+        .parse()
+        .map_err(|e| format!("Workforce 주소 오류: {e}"))?;
     if let Some(existing) = app.get_webview_window("workforce-console") {
+        // A failed first load stays blank after the loopback tunnel reconnects.
+        existing.navigate(url).map_err(|e| e.to_string())?;
         existing.show().map_err(|e| e.to_string())?;
         existing.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
-    let url = format!("{CONSOLE_ORIGIN}/schedules")
-        .parse()
-        .map_err(|e| format!("Workforce 주소 오류: {e}"))?;
     WebviewWindowBuilder::new(&app, "workforce-console", WebviewUrl::External(url))
         .title("Buzz · Workforce")
         .inner_size(1280.0, 850.0)
